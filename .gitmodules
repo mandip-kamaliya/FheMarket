@@ -10,3 +10,6 @@
 [submodule "lib/fhenix-contracts"]
 	path = lib/fhenix-contracts
 	url = https://github.com/FhenixProtocol/fhenix-contracts
+[submodule "lib/solmate"]
+	path = lib/solmate
+	url = https://github.com/transmissions11/solmate
