@@ -1,14 +1,25 @@
-[profile.default]
-bytecode_hash = "none"
-evm_version = "cancun"
-ffi = true
-fs_permissions = [{access = "read-write", path = ".forge-snapshots/"}]
-libs = ["lib"]
-out = "out"
-solc_version = "0.8.30"
-src = "src"
-via_ir = false
 
-[lint]
-exclude_lints = ["screaming-snake-case-immutable", "screaming-snake-case-const"]
-lint_on_build = false
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+test = "test"
+script = "script"
+
+# --- Critical for Uniswap v4 ---
+via_ir = true
+evm_version = "cancun"
+optimizer = true
+optimizer_runs = 200
+
+# --- Fhenix / Solmate Compatibility ---
+auto_detect_solc = true
+block_timestamp = 1700000000 # Fixes some timestamp testing bugs
+gas_limit = "30000000"       # High gas limit for FHE operations
+
+# Permissions for File IO (Used by HookMiner)
+fs_permissions = [{ access = "read", path = "./" }]
+
+[profile.default.rpc_storage_caching]
+chains = "all"
+endpoints = "all"
