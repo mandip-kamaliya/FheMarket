@@ -1,7 +1,0 @@
-@uniswap/v4-core/=lib/v4-core/
-@uniswap/v4-periphery/=lib/v4-periphery/
-@fhenixprotocol/=lib/fhenix-contracts/contracts/
-solmate/=lib/solmate/src/
-forge-std/=lib/forge-std/src/
-# Hookmate isn't used in our code, but we keep the mapping just in case
-hookmate/=lib/hookmate/src/
