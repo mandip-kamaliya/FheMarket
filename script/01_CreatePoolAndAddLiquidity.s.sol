@@ -1,86 +1,70 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+pragma solidity ^0.8.24;
 
-import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {CurrencyLibrary, Currency} from "@uniswap/v4-core/src/types/Currency.sol";
-import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
-import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import "forge-std/Script.sol";
+import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
+import {PoolKey} from "v4-core/types/PoolKey.sol";
+import {Constants} from "@uniswap/v4-core/test/utils/Constants.sol";
+import {Currency} from "v4-core/types/Currency.sol";
+import {Hooks} from "v4-core/libraries/Hooks.sol";
 
-import {BaseScript} from "./base/BaseScript.sol";
-import {LiquidityHelpers} from "./base/LiquidityHelpers.sol";
+// ✅ NEW: Import Deployers directly to make this script self-contained
+import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 
-contract CreatePoolAndAddLiquidityScript is BaseScript, LiquidityHelpers {
-    using CurrencyLibrary for Currency;
+// Your Custom Files
+import {MockToken} from "src/mocks/MockToken.sol";
+import {FheMarketHook} from "src/FheMarketHook.sol";
+import {HookMiner} from "test/utils/HookMiner.sol";
 
-    /////////////////////////////////////
-    // --- Configure These ---
-    /////////////////////////////////////
-
-    uint24 lpFee = 3000; // 0.30%
-    int24 tickSpacing = 60;
-    uint160 startingPrice = 2 ** 96; // Starting price, sqrtPriceX96; floor(sqrt(1) * 2^96)
-
-    // --- liquidity position configuration --- //
-    uint256 public token0Amount = 100e18;
-    uint256 public token1Amount = 100e18;
-
-    // range of the position, must be a multiple of tickSpacing
-    int24 tickLower;
-    int24 tickUpper;
-    /////////////////////////////////////
-
+// ✅ NEW: Inherit from Deployers
+contract CreatePoolAndAddLiquidity is Script, Deployers {
     function run() external {
-        PoolKey memory poolKey = PoolKey({
+        vm.startBroadcast();
+
+        // 1. Deploy Uniswap v4 Engine (Manager, Routers, etc.)
+        // This solves the "Undeclared identifier: poolManager" error!
+        deployFreshManagerAndRouters();
+        console.log("PoolManager Deployed at:", address(manager));
+
+        // 2. Deploy Tokens
+        MockToken tokenA = new MockToken("YES Token", "YES");
+        MockToken tokenB = new MockToken("NO Token", "NO");
+
+        // 3. Sort Tokens
+        (Currency currency0, Currency currency1) = address(tokenA) < address(tokenB)
+            ? (Currency.wrap(address(tokenA)), Currency.wrap(address(tokenB)))
+            : (Currency.wrap(address(tokenB)), Currency.wrap(address(tokenA)));
+
+        // 4. Mine Hook Address
+        uint160 flags = uint160(
+            Hooks.BEFORE_SWAP_FLAG | 
+            Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG |
+            Hooks.BEFORE_INITIALIZE_FLAG
+        );
+
+        (address hookAddress, bytes32 salt) = HookMiner.find(
+            address(this),
+            flags,
+            type(FheMarketHook).creationCode,
+            abi.encode(manager) // Use the 'manager' we just deployed
+        );
+
+        // 5. Deploy Hook
+        FheMarketHook hook = new FheMarketHook{salt: salt}(manager);
+        console.log("Hook Deployed at:", address(hook));
+
+        // 6. Initialize Pool
+        PoolKey memory key = PoolKey({
             currency0: currency0,
             currency1: currency1,
-            fee: lpFee,
-            tickSpacing: tickSpacing,
-            hooks: hookContract
+            fee: 3000,
+            tickSpacing: 60,
+            hooks: hook
         });
 
-        bytes memory hookData = new bytes(0);
+        manager.initialize(key, Constants.SQRT_PRICE_1_1, new bytes(0));
+        console.log("Pool Initialized successfully!");
 
-        int24 currentTick = TickMath.getTickAtSqrtPrice(startingPrice);
-
-        tickLower = truncateTickSpacing((currentTick - 750 * tickSpacing), tickSpacing);
-        tickUpper = truncateTickSpacing((currentTick + 750 * tickSpacing), tickSpacing);
-
-        // Converts token amounts to liquidity units
-        uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
-            startingPrice,
-            TickMath.getSqrtPriceAtTick(tickLower),
-            TickMath.getSqrtPriceAtTick(tickUpper),
-            token0Amount,
-            token1Amount
-        );
-
-        // slippage limits
-        uint256 amount0Max = token0Amount + 1;
-        uint256 amount1Max = token1Amount + 1;
-
-        (bytes memory actions, bytes[] memory mintParams) = _mintLiquidityParams(
-            poolKey, tickLower, tickUpper, liquidity, amount0Max, amount1Max, deployerAddress, hookData
-        );
-
-        // multicall parameters
-        bytes[] memory params = new bytes[](2);
-
-        // Initialize Pool
-        params[0] = abi.encodeWithSelector(positionManager.initializePool.selector, poolKey, startingPrice, hookData);
-
-        // Mint Liquidity
-        params[1] = abi.encodeWithSelector(
-            positionManager.modifyLiquidities.selector, abi.encode(actions, mintParams), block.timestamp + 3600
-        );
-
-        // If the pool is an ETH pair, native tokens are to be transferred
-        uint256 valueToPass = currency0.isAddressZero() ? amount0Max : 0;
-
-        vm.startBroadcast();
-        tokenApprovals();
-
-        // Multicall to atomically create pool & add liquidity
-        positionManager.multicall{value: valueToPass}(params);
         vm.stopBroadcast();
     }
 }
