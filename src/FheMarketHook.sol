@@ -3,10 +3,7 @@ pragma solidity ^0.8.24;
 
 import {BaseHook} from "v4-periphery/utils/BaseHook.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
-
-// ✅ FIXED: Import SwapParams from the correct file for latest v4-core
-import {SwapParams} from "v4-core/types/PoolOperation.sol";
-
+import {SwapParams} from "v4-core/types/PoolOperation.sol"; // Latest Import Path
 import {Hooks} from "v4-core/libraries/Hooks.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {Currency} from "v4-core/types/Currency.sol";
@@ -18,18 +15,18 @@ contract FheMarketHook is BaseHook {
     
     // --- STATE VARIABLES ---
     mapping(address => euint128) internal _eUSDC;
-    // PoolId -> (0=YES / 1=NO) -> User -> Balance
     mapping(bytes32 => mapping(uint8 => mapping(address => euint128))) internal _outcomeBalances;
 
-    // Encrypted Constants
     euint128 internal eZERO;
     euint128 internal eONE;
 
     constructor(IPoolManager _poolManager) BaseHook(_poolManager) {
         eZERO = FHE.asEuint128(0);
         eONE = FHE.asEuint128(1);
-        FHE.allowThis(eZERO);
-        FHE.allowThis(eONE);
+        
+        // ✅ FIXED: "allowThis" -> "allow(val, address(this))"
+        FHE.allow(eZERO, address(this));
+        FHE.allow(eONE, address(this));
     }
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
@@ -55,8 +52,10 @@ contract FheMarketHook is BaseHook {
     function depositShielded(inEuint128 calldata encryptedAmount) public {
         euint128 amount = FHE.asEuint128(encryptedAmount);
         _eUSDC[msg.sender] = FHE.add(_eUSDC[msg.sender], amount);
-        FHE.allowThis(_eUSDC[msg.sender]);
-        FHE.allowSender(_eUSDC[msg.sender]);
+        
+        // ✅ FIXED: Use standard allow
+        FHE.allow(_eUSDC[msg.sender], address(this));
+        FHE.allow(_eUSDC[msg.sender], msg.sender);
     }
 
     // --- ENCRYPTED SWAP ---
@@ -78,8 +77,8 @@ contract FheMarketHook is BaseHook {
         // 2. Deduct USDC
         _eUSDC[msg.sender] = FHE.sub(_eUSDC[msg.sender], validAmount);
 
-        // 3. Mint & Swap Logic (Internal AMM Simulation)
-        euint128 totalLeverage = FHE.add(validAmount, validAmount); // 2x leverage
+        // 3. Mint & Swap Logic
+        euint128 totalLeverage = FHE.add(validAmount, validAmount); 
         euint128 finalYes = FHE.select(isYes, totalLeverage, eZERO);
         euint128 finalNo  = FHE.select(isYes, eZERO, totalLeverage);
 
@@ -88,15 +87,18 @@ contract FheMarketHook is BaseHook {
         _outcomeBalances[poolId][1][msg.sender] = FHE.add(_outcomeBalances[poolId][1][msg.sender], finalNo);
 
         // 5. Permissions
-        FHE.allowThis(_eUSDC[msg.sender]);
-        FHE.allowSender(_eUSDC[msg.sender]);
-        FHE.allowThis(_outcomeBalances[poolId][0][msg.sender]);
-        FHE.allowSender(_outcomeBalances[poolId][0][msg.sender]);
-        FHE.allowThis(_outcomeBalances[poolId][1][msg.sender]);
-        FHE.allowSender(_outcomeBalances[poolId][1][msg.sender]);
+        FHE.allow(_eUSDC[msg.sender], address(this));
+        FHE.allow(_eUSDC[msg.sender], msg.sender);
+        
+        // Grant permissions for YES outcome
+        FHE.allow(_outcomeBalances[poolId][0][msg.sender], address(this));
+        FHE.allow(_outcomeBalances[poolId][0][msg.sender], msg.sender);
+        
+        // Grant permissions for NO outcome
+        FHE.allow(_outcomeBalances[poolId][1][msg.sender], address(this));
+        FHE.allow(_outcomeBalances[poolId][1][msg.sender], msg.sender);
     }
 
-    // --- HOOKS ---
     function beforeInitialize(address, PoolKey calldata, uint160 sqrtPriceX96, bytes calldata)
         external override returns (bytes4)
     {
@@ -104,7 +106,7 @@ contract FheMarketHook is BaseHook {
         return BaseHook.beforeInitialize.selector;
     }
 
-    // ✅ FIXED SIGNATURE: Using 'SwapParams' directly without prefix
+    // ✅ FIXED: Correct Return Signature (bytes4, BeforeSwapDelta, uint24)
     function beforeSwap(address, PoolKey calldata, SwapParams calldata, bytes calldata)
         external override returns (bytes4, BeforeSwapDelta, uint24)
     {
