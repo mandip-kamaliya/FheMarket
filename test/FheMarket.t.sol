@@ -9,6 +9,9 @@ import {Hooks} from "v4-core/libraries/Hooks.sol";
 import {Constants} from "@uniswap/v4-core/test/utils/Constants.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 
+// ✅ NEW: Import SwapParams correctly
+import {SwapParams} from "v4-core/types/PoolOperation.sol";
+
 // FHE Imports
 import {FHE, inEuint128} from "@fhenixprotocol/FHE.sol";
 
@@ -19,7 +22,9 @@ import {HookMiner} from "test/utils/HookMiner.sol";
 
 contract FheMarketTest is Test, Deployers {
     FheMarketHook hook;
-    PoolKey key;
+    
+    // ❌ DELETED: "PoolKey key;" (It is already defined in Deployers)
+    
     MockToken tokenA;
     MockToken tokenB;
 
@@ -53,7 +58,7 @@ contract FheMarketTest is Test, Deployers {
 
         hook = new FheMarketHook{salt: salt}(manager);
         
-        // 5. Initialize Pool
+        // 5. Initialize Pool (Assigning to the inherited 'key' variable)
         key = PoolKey({
             currency0: c0,
             currency1: c1,
@@ -69,7 +74,6 @@ contract FheMarketTest is Test, Deployers {
         // --- SCENARIO: User wants to bet 100 USDC on YES ---
 
         // 1. Prepare Encrypted Inputs (Mocking Encryption)
-        // In a real app, this comes from fhenix.js. In tests, we helper functions.
         inEuint128 encAmount = FHE.inEuint128(100); 
         inEuint128 encIsYes = FHE.inEuint128(1); // 1 = YES
 
@@ -77,9 +81,6 @@ contract FheMarketTest is Test, Deployers {
         console.log("Step 1: User Deposits 100 USDC (Encrypted)...");
         hook.depositShielded(encAmount);
         
-        // We can't verify the balance easily because it's private (internal),
-        // but if this didn't revert, the FHE math worked!
-
         // 3. Step 2: Swap (Place Bet)
         console.log("Step 2: User Bets on YES...");
         hook.swapEncrypted(key, encAmount, encIsYes);
@@ -91,13 +92,10 @@ contract FheMarketTest is Test, Deployers {
 
     function test_RevertIfPublicSwap() public {
         // Ensure that normal Uniswap swaps are BLOCKED
-        // This proves your "Dark Pool" is enforcing privacy
-        
         vm.expectRevert(bytes("Use swapEncrypted()"));
         
-        // Try to swap via the normal manager (Should fail)
-        // We use empty params because the hook blocks it immediately anyway
-        IPoolManager.SwapParams memory params = IPoolManager.SwapParams({
+        // ✅ FIXED: Use 'SwapParams' directly
+        SwapParams memory params = SwapParams({
             zeroForOne: true,
             amountSpecified: 100,
             sqrtPriceLimitX96: Constants.SQRT_PRICE_1_1
