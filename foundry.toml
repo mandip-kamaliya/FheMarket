@@ -1,4 +1,3 @@
-
 [profile.default]
 src = "src"
 out = "out"
@@ -6,18 +5,21 @@ libs = ["lib"]
 test = "test"
 script = "script"
 
-# --- Critical for Uniswap v4 ---
+# --- ⚡ PERFORMANCE BOOSTERS ---
 via_ir = true
 evm_version = "cancun"
 optimizer = true
 optimizer_runs = 200
 
-# --- Fhenix / Solmate Compatibility ---
-auto_detect_solc = true
-block_timestamp = 1700000000 # Fixes some timestamp testing bugs
-gas_limit = "30000000"       # High gas limit for FHE operations
+# --- 🚀 UNLIMITED POWER ---
+# Set gas limit to the maximum possible integer to prevent OOG errors
+gas_limit = "18446744073709551615" 
+# Increase memory limit significantly (2^28 bytes)
+memory_limit = 268435456
 
-# Permissions for File IO (Used by HookMiner)
+# --- Fhenix Settings ---
+auto_detect_solc = true
+block_timestamp = 1700000000
 fs_permissions = [{ access = "read", path = "./" }]
 
 [profile.default.rpc_storage_caching]

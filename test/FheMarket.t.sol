@@ -9,7 +9,7 @@ import {Hooks} from "v4-core/libraries/Hooks.sol";
 import {Constants} from "@uniswap/v4-core/test/utils/Constants.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 
-// ✅ NEW: Import SwapParams correctly
+// Import SwapParams from PoolOperation (Latest V4 Core)
 import {SwapParams} from "v4-core/types/PoolOperation.sol";
 
 // FHE Imports
@@ -22,21 +22,20 @@ import {HookMiner} from "test/utils/HookMiner.sol";
 
 contract FheMarketTest is Test, Deployers {
     FheMarketHook hook;
-    
-    // ❌ DELETED: "PoolKey key;" (It is already defined in Deployers)
-    
     MockToken tokenA;
     MockToken tokenB;
 
+    // Note: PoolKey key; is already defined in Deployers, so we do not redeclare it here.
+
     function setUp() public {
-        // 1. Deploy Uniswap Manager & Routers
+        // 1. Deploy Uniswap Manager and Routers
         deployFreshManagerAndRouters();
 
         // 2. Deploy Mock Tokens
         tokenA = new MockToken("YES Token", "YES");
         tokenB = new MockToken("NO Token", "NO");
 
-        // 3. Sort Tokens (TokenA must be < TokenB)
+        // 3. Sort Tokens (TokenA must be less than TokenB)
         if (address(tokenA) > address(tokenB)) {
             (tokenA, tokenB) = (tokenB, tokenA);
         }
@@ -58,7 +57,7 @@ contract FheMarketTest is Test, Deployers {
 
         hook = new FheMarketHook{salt: salt}(manager);
         
-        // 5. Initialize Pool (Assigning to the inherited 'key' variable)
+        // 5. Initialize Pool
         key = PoolKey({
             currency0: c0,
             currency1: c1,
@@ -71,30 +70,33 @@ contract FheMarketTest is Test, Deployers {
     }
 
     function test_FullUserFlow() public {
-        // --- SCENARIO: User wants to bet 100 USDC on YES ---
+        // SCENARIO: User wants to bet 100 USDC on YES
 
-        // 1. Prepare Encrypted Inputs (Mocking Encryption)
-        inEuint128 encAmount = FHE.inEuint128(100); 
-        inEuint128 encIsYes = FHE.inEuint128(1); // 1 = YES
+        // Manually construct the struct for testing/mocking
+        // In a real Fhenix network, this data must be valid ciphertext.
+        // For compilation/mocking, we pack the number into bytes.
+        
+        inEuint128 memory encAmount;
+        encAmount.data = abi.encodePacked(uint128(100)); // Mocking encrypted 100
 
-        // 2. Step 1: Deposit (Shield Funds)
+        inEuint128 memory encIsYes;
+        encIsYes.data = abi.encodePacked(uint128(1)); // Mocking encrypted 1 (YES)
+
         console.log("Step 1: User Deposits 100 USDC (Encrypted)...");
         hook.depositShielded(encAmount);
         
-        // 3. Step 2: Swap (Place Bet)
         console.log("Step 2: User Bets on YES...");
         hook.swapEncrypted(key, encAmount, encIsYes);
 
-        // 4. Verification
         console.log("Bet placed successfully!");
         assertTrue(true); 
     }
 
     function test_RevertIfPublicSwap() public {
         // Ensure that normal Uniswap swaps are BLOCKED
+        
         vm.expectRevert(bytes("Use swapEncrypted()"));
         
-        // ✅ FIXED: Use 'SwapParams' directly
         SwapParams memory params = SwapParams({
             zeroForOne: true,
             amountSpecified: 100,
