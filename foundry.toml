@@ -25,3 +25,5 @@ fs_permissions = [{ access = "read", path = "./" }]
 [profile.default.rpc_storage_caching]
 chains = "all"
 endpoints = "all"
+
+isolate = true
